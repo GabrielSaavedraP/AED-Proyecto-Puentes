@@ -1,0 +1,22 @@
+# Manim: renders intermedios y cachés
+python/media/
+media/
+
+# C++: compilación
+cpp/build/
+cpp/cmake-build-*/
+cpp/puentes
+cpp/puentes.exe
+*.o
+*.obj
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE y sistema
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
