@@ -3,25 +3,23 @@
 #include <fstream>
 #include <string>
 #include <algorithm>
-#include <cstdlib>
+#include <utility>
 
 using namespace std;
 
 const int N = 1000;
 int n, m; // n: vértices, m: aristas
-vector<pair<int, int>> adj[N]; // (vecino, id_arista): el id distingue aristas paralelas
+vector<int> adj[N];
 bool visited[N];
 int tin[N], low[N];
-int timer = 0;
-
-// Puentes encontrados (solo para el resumen por consola)
-vector<pair<int, int>> puentes;
+int timer_dfs = 0;
 
 // Variables para el CSV de animación
 ofstream csvFile;
 int iteracion = 1;
 
-void logEvent(string accion, int u, int v, int t_in, int l_val, string tipoArista, string resultado) {
+void logEvent(const string& accion, int u, int v, int t_in, int l_val,
+              const string& tipoArista, const string& resultado) {
     if (csvFile.is_open()) {
         csvFile << iteracion++ << "," << accion << "," << u << "," << v << ","
                 << (t_in == -1 ? "NULL" : to_string(t_in)) << ","
@@ -30,43 +28,31 @@ void logEvent(string accion, int u, int v, int t_in, int l_val, string tipoArist
     }
 }
 
-// idPadre: id de la ARISTA por la que se llegó a u (no solo el vértice padre).
-// Así una segunda arista paralela hacia el padre cuenta como retroceso y no se confunde con el padre.
-void DFS(int u, int p = -1, int idPadre = -1) {
+void DFS(int u, int p = -1) {
     visited[u] = true;
-    tin[u] = low[u] = timer++;
+    tin[u] = low[u] = timer_dfs++;
 
     logEvent("VISITAR", u, p, tin[u], low[u], "NONE", "NODO_DESCUBIERTO");
 
-    for (const pair<int, int>& arista : adj[u]) {
-        int v = arista.first;
-        int id = arista.second;
-
-        if (id == idPadre) {
+    for (int v : adj[u]) {
+        if (v == p) {
             logEvent("EXPLORAR_ARISTA", u, v, tin[u], low[u], "PARENT", "IGNORAR_PADRE");
             continue;
         }
-        if (v == u) {
-            logEvent("EXPLORAR_ARISTA", u, v, tin[u], low[u], "SELF_LOOP", "BUCLE_IGNORADO");
-            continue;
-        }
         if (visited[v]) {
-            if (tin[v] < tin[u]) {
-                // v es un ancestro de u: arista de retroceso real.
-                logEvent("EXPLORAR_ARISTA", u, v, tin[u], low[u], "BACK_EDGE", "ARISTA_RETROCESO");
-                int oldLow = low[u];
-                low[u] = min(low[u], tin[v]);
-                if (low[u] != oldLow) {
-                    logEvent("ACTUALIZAR_LOW", u, v, tin[u], low[u], "BACK_EDGE", "LOW_ACTUALIZADO_POR_CICLO");
-                }
-            } else {
-                // v es un descendiente ya terminado: esta arista ya se procesó como
-                // retroceso desde v, aquí solo se vuelve a ver desde el ancestro.
-                logEvent("EXPLORAR_ARISTA", u, v, tin[u], low[u], "FORWARD_EDGE", "ARISTA_YA_PROCESADA");
+            if (tin[v] > tin[u]) {
+                logEvent("EXPLORAR_ARISTA", u, v, tin[u], low[u], "FORWARD_EDGE", "ARISTA_HACIA_DESCENDIENTE");
+                continue;
+            }
+            logEvent("EXPLORAR_ARISTA", u, v, tin[u], low[u], "BACK_EDGE", "ARISTA_RETROCESO");
+            int oldLow = low[u];
+            low[u] = min(low[u], tin[v]);
+            if (low[u] != oldLow) {
+                logEvent("ACTUALIZAR_LOW", u, v, tin[u], low[u], "BACK_EDGE", "LOW_ACTUALIZADO_POR_CICLO");
             }
         } else {
             logEvent("EXPLORAR_ARISTA", u, v, tin[u], low[u], "TREE_EDGE", "AVANZAR_DFS");
-            DFS(v, u, id);
+            DFS(v, u);
 
             int oldLow = low[u];
             low[u] = min(low[u], low[v]);
@@ -75,7 +61,6 @@ void DFS(int u, int p = -1, int idPadre = -1) {
             }
 
             if (low[v] > tin[u]) {
-                puentes.push_back({u, v});
                 logEvent("MARCAR_PUENTE", u, v, tin[u], low[v], "TREE_EDGE", "PUENTE_ENCONTRADO");
             }
         }
@@ -84,65 +69,29 @@ void DFS(int u, int p = -1, int idPadre = -1) {
 }
 
 void agregarArista(int u, int v) {
-    if (u < 0 || u >= n || v < 0 || v >= n) {
-        cerr << "Error: arista (" << u << ", " << v << ") fuera de rango [0, " << n - 1 << "]" << endl;
-        exit(1);
-    }
-    adj[u].push_back({v, m});
-    if (u != v) adj[v].push_back({u, m}); // un bucle se guarda una sola vez
-    m++;
+    adj[u].push_back(v);
+    adj[v].push_back(u);
     logEvent("CREAR_ARISTA", u, v, -1, -1, "NONE", "SETUP_GRAFO");
 }
 
-// Formato del archivo de grafo:  "n m"  y luego m líneas "u v"  (vértices 0..n-1)
-void leerGrafo(const string& ruta, vector<pair<int, int>>& aristas) {
-    ifstream in(ruta);
-    int cantidadAristas = 0;
-    if (!in.is_open() || !(in >> n >> cantidadAristas) || n < 0 || n > N || cantidadAristas < 0) {
-        cerr << "Error: no se pudo leer un grafo valido (n <= " << N << ") desde '" << ruta << "'" << endl;
-        exit(1);
-    }
-    for (int i = 0; i < cantidadAristas; ++i) {
-        int u, v;
-        if (!(in >> u >> v)) {
-            cerr << "Error: faltan aristas en '" << ruta << "'" << endl;
-            exit(1);
-        }
-        aristas.push_back({u, v});
-    }
-}
-
-// Uso: puentes [grafo.txt] [salida.csv]
-//   Sin argumentos se usa el grafo de ejemplo y se escribe puentes_animacion.csv
-int main(int argc, char* argv[]) {
-    string archivoGrafo = argc > 1 ? argv[1] : "";
-    string archivoCsv = argc > 2 ? argv[2] : "puentes_animacion.csv";
-
-    vector<pair<int, int>> aristas;
-    if (archivoGrafo.empty()) {
-        // Se arma la instancia ilustrativa + caso borde (nodo 4 aislado)
-        n = 5;
-        aristas = {{0, 1}, {1, 2}, {2, 0}, {2, 3}};
-    } else {
-        leerGrafo(archivoGrafo, aristas);
-    }
-
-    csvFile.open(archivoCsv);
-    if (!csvFile.is_open()) {
-        cerr << "Error: no se pudo crear '" << archivoCsv << "'" << endl;
-        return 1;
-    }
-    csvFile << "Iteracion,Accion,Nodo_Actual,Nodo_Vecino,Orden_Visita,Low,Tipo_Arista,Resultado\n";
-
-    // Definimos los n nodos (0 al n-1)
-    for (int i = 0; i < n; ++i) {
+void correr(const string& archivo, int nodos, const vector<pair<int, int>>& aristas) {
+    for (int i = 0; i < N; ++i) {
+        adj[i].clear();
         visited[i] = false;
         tin[i] = low[i] = -1;
+    }
+    timer_dfs = 0;
+    iteracion = 1;
+    n = nodos;
+
+    csvFile.open(archivo);
+    csvFile << "Iteracion,Accion,Nodo_Actual,Nodo_Vecino,Orden_Visita,Low,Tipo_Arista,Resultado\n";
+
+    for (int i = 0; i < n; ++i) {
         logEvent("CREAR_NODO", i, -1, -1, -1, "NONE", "SETUP_GRAFO");
     }
-
-    for (const pair<int, int>& arista : aristas) {
-        agregarArista(arista.first, arista.second);
+    for (const auto& a : aristas) {
+        agregarArista(a.first, a.second);
     }
 
     // Recorrer todas las componentes
@@ -154,11 +103,16 @@ int main(int argc, char* argv[]) {
 
     logEvent("FIN", -1, -1, -1, -1, "NONE", "ALGORITMO_COMPLETADO");
     csvFile.close();
+}
 
-    cout << "Archivo CSV generado exitosamente." << endl;
-    cout << "Vertices: " << n << "  Aristas: " << m << "  Puentes: " << puentes.size() << endl;
-    for (const pair<int, int>& p : puentes) {
-        cout << "  Puente: (" << p.first << ", " << p.second << ")" << endl;
-    }
+int main() {
+    // Definimos un grafo de 5 nodos (0 al 4)
+    // Se arma la instancia ilustrativa + caso borde (nodo 4 aislado)
+    correr("puentes_animacion.csv", 5, {{0, 1}, {1, 2}, {2, 0},  // Ciclo
+                                        {2, 3}});                 // Puente
+    correr("caso_ciclo.csv", 5, {{0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 0}});
+    correr("caso_arbol.csv", 6, {{0, 1}, {0, 2}, {1, 3}, {1, 4}, {2, 5}});
+
+    cout << "CSV generados exitosamente." << endl;
     return 0;
 }
