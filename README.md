@@ -4,7 +4,7 @@ Proyecto Final 2 — **Anima tu Algoritmo o Estructura de Datos**
 Curso: Algoritmos y Estructuras de Datos (CS2023) — UTEC — Semestre 2026-2  
 Docente: Víctor Racsó Galván Oyola
 
-**Video:** [(https://youtu.be/TLwGAfyr-bQ)]
+**Video:** https://youtu.be/TLwGAfyr-bQ
 
 ## Integrantes
 
